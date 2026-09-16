@@ -1,0 +1,10 @@
+{
+  "name": "todo-backend-java",
+  "build": { "dockerfile": "../Dockerfile", "target": "build" },
+  "forwardPorts": [8081],
+  "postCreateCommand": "javac -version",
+  "remoteEnv": { "PORT": "8081" },
+  "customizations": {
+    "vscode": { "extensions": ["vscjava.vscode-java-pack"] }
+  }
+}

@@ -1,0 +1,125 @@
+/**
+ * The Todo-Backend contract, asserted against a running server.
+ *
+ * These are the twelve assertions of TodoBackend/todo-backend-js-spec, transcribed to run
+ * headlessly. The canonical suite is browser-hosted (todobackend.com points a Mocha page at a
+ * deployed URL); this is the same contract in a form that runs in CI with no browser.
+ *
+ * The contract is not ours. That is the entire reason this file exists: when the front end is
+ * migrated from Angular to Svelte, "the backend did not change" has to be a measurement rather
+ * than an assurance, and a suite written by whoever is doing the migrating is not a measurement.
+ *
+ *   node conformance/spec.mjs [baseUrl]
+ */
+
+const BASE = (process.argv[2] || process.env.TODO_API || 'http://localhost:8081').replace(/\/$/, '');
+
+let passed = 0;
+const failures = [];
+
+const json = (r) => r.json();
+const post = (body) =>
+  fetch(BASE + '/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }).then(json);
+const patch = (url, body) =>
+  fetch(url, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }).then(json);
+const clear = () => fetch(BASE + '/', { method: 'DELETE' });
+
+function eq(actual, expected, what) {
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+  }
+}
+
+async function it(name, fn) {
+  try {
+    await clear();
+    await fn();
+    console.log(`  ok    ${name}`);
+    passed++;
+  } catch (err) {
+    console.log(`  FAIL  ${name}`);
+    console.log(`        ${err.message}`);
+    failures.push(name);
+  }
+}
+
+console.log(`todo-backend contract against ${BASE}\n`);
+
+await it('adds a new todo to the list of todos at the root url', async () => {
+  await post({ title: 'a todo' });
+  const all = await fetch(BASE + '/').then(json);
+  eq(all.length, 1, 'list length');
+  eq(all[0].title, 'a todo', 'title');
+});
+
+await it('sets up a new todo as initially not completed', async () => {
+  eq((await post({ title: 'x' })).completed, false, 'completed');
+});
+
+await it('each new todo has a url', async () => {
+  const todo = await post({ title: 'x' });
+  if (typeof todo.url !== 'string' || !todo.url) throw new Error('no url on the created todo');
+});
+
+await it('each new todo has a url, which returns a todo', async () => {
+  const todo = await post({ title: 'y' });
+  eq((await fetch(todo.url).then(json)).title, 'y', 'title at url');
+});
+
+await it('can navigate from a list of todos to an individual todo via urls', async () => {
+  await post({ title: 'n1' });
+  const [first] = await fetch(BASE + '/').then(json);
+  eq((await fetch(first.url).then(json)).title, 'n1', 'title via list url');
+});
+
+await it('can change the todo title by PATCHing to the todo url', async () => {
+  const todo = await post({ title: 'old' });
+  eq((await patch(todo.url, { title: 'new' })).title, 'new', 'patched title');
+});
+
+await it('can change the todo completedness by PATCHing to the todo url', async () => {
+  const todo = await post({ title: 'c' });
+  eq((await patch(todo.url, { completed: true })).completed, true, 'patched completed');
+});
+
+await it('changes to a todo are persisted and show up when re-fetching', async () => {
+  const todo = await post({ title: 'p' });
+  await patch(todo.url, { title: 'pp', completed: true });
+  const again = await fetch(todo.url).then(json);
+  eq(again.title, 'pp', 're-fetched title');
+  eq(again.completed, true, 're-fetched completed');
+});
+
+await it('can delete a todo making a DELETE request to the todo url', async () => {
+  const todo = await post({ title: 'd' });
+  await fetch(todo.url, { method: 'DELETE' });
+  eq((await fetch(todo.url)).status, 404, 'status after delete');
+});
+
+await it('can create a todo with an order field', async () => {
+  eq((await post({ title: 'o', order: 523 })).order, 523, 'order');
+});
+
+await it('can PATCH a todo to change its order', async () => {
+  const todo = await post({ title: 'o2', order: 10 });
+  eq((await patch(todo.url, { order: 95 })).order, 95, 'patched order');
+});
+
+await it('remembers changes to a todo order', async () => {
+  const todo = await post({ title: 'o3', order: 10 });
+  await patch(todo.url, { order: 95 });
+  eq((await fetch(todo.url).then(json)).order, 95, 're-fetched order');
+});
+
+await clear();
+
+console.log(`\n  ${passed} passed, ${failures.length} failed`);
+process.exit(failures.length ? 1 : 0);

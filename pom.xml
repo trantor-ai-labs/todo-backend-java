@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>xyz.trantor</groupId>
+  <artifactId>todo-backend-java</artifactId>
+  <version>1.0.0</version>
+  <packaging>jar</packaging>
+
+  <name>todo-backend-java</name>
+  <description>A Todo-Backend implementation. The fixed point of the Angular-to-Svelte migration case study.</description>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven.compiler.release>21</maven.compiler.release>
+  </properties>
+
+  <!--
+    No dependencies, deliberately.
+
+    This service is the thing that must NOT change while the front end is migrated, and it has to
+    still build years from now, possibly with no network and no resolvable artifacts. Every
+    dependency is a way for the control in a controlled experiment to fail for its own reasons.
+    The JDK ships an HTTP server; the payloads are flat JSON. That is the whole requirement.
+  -->
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.4.1</version>
+        <configuration>
+          <archive>
+            <manifest>
+              <mainClass>xyz.trantor.todo.TodoServer</mainClass>
+            </manifest>
+          </archive>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>
