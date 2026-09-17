@@ -12,10 +12,19 @@
  *   node conformance/spec.mjs [baseUrl]
  */
 
+import fs from 'node:fs';
+import path from 'node:path';
+
 const BASE = (process.argv[2] || process.env.TODO_API || 'http://localhost:8081').replace(/\/$/, '');
+
+// Where to leave a machine-readable record, if asked. Console output is for a person watching;
+// a factory grading this conversion needs something it can parse, and it should not have to scrape
+// prose to get it. Absent means nobody asked — the suite still runs and still prints.
+const JUNIT = process.env.JUNIT_OUT || null;
 
 let passed = 0;
 const failures = [];
+const cases = [];
 
 const json = (r) => r.json();
 const post = (body) =>
@@ -39,16 +48,43 @@ function eq(actual, expected, what) {
 }
 
 async function it(name, fn) {
+  const began = Date.now();
   try {
     await clear();
     await fn();
     console.log(`  ok    ${name}`);
     passed++;
+    cases.push({ name, ms: Date.now() - began, failure: null });
   } catch (err) {
     console.log(`  FAIL  ${name}`);
     console.log(`        ${err.message}`);
     failures.push(name);
+    cases.push({ name, ms: Date.now() - began, failure: err.message });
   }
+}
+
+/**
+ * JUnit XML, hand-written because this suite has no dependencies and is not about to grow one.
+ *
+ * Paired `<testcase>…</testcase>` tags rather than self-closing, deliberately: a self-closed tag is
+ * the form Surefire uses and the form a greedy parser silently merges into its neighbour. Both
+ * parse correctly now, but emitting the shape that cannot be misread costs nothing.
+ */
+function writeJunit(file) {
+  const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const body = cases.map((c) => {
+    const open = `<testcase classname="todo-backend-contract" name="${esc(c.name)}" time="${(c.ms / 1000).toFixed(3)}">`;
+    const fail = c.failure ? `<failure message="${esc(c.failure)}"></failure>` : '';
+    return `    ${open}${fail}</testcase>`;
+  }).join('\n');
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="todo-backend-contract" tests="${cases.length}" failures="${failures.length}">
+${body}
+</testsuite>
+`;
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, xml);
+  console.log(`\n  wrote ${file}`);
 }
 
 console.log(`todo-backend contract against ${BASE}\n`);
@@ -122,4 +158,5 @@ await it('remembers changes to a todo order', async () => {
 await clear();
 
 console.log(`\n  ${passed} passed, ${failures.length} failed`);
+if (JUNIT) writeJunit(JUNIT);
 process.exit(failures.length ? 1 : 0);
